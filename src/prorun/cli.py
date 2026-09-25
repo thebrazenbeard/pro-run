@@ -24,14 +24,9 @@ def _open_store(path: str) -> Store:
 
 
 def _submit(store: Store, task: str, capabilities: set[str], now: float) -> str:
-    run_id = store.create_run(task=task, capabilities=capabilities, now=now)
-    store.enqueue_event(
-        kind="run.step",
-        payload={"run_id": run_id, "step": 0},
-        dedup_key=f"run-step:{run_id}:0",
-        now=now,
+    return store.create_run_with_initial_step(
+        task=task, capabilities=capabilities, now=now
     )
-    return run_id
 
 
 def _runtime(args: argparse.Namespace, store: Store) -> Daemon:

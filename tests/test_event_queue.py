@@ -43,3 +43,32 @@ def test_event_lifecycle_is_append_only_journaled(tmp_path: Path) -> None:
         "EVENT_CLAIMED",
         "EVENT_ACKED",
     ]
+
+
+def test_event_dedup_key_is_bound_to_exact_semantic_request(tmp_path: Path) -> None:
+    store = Store(tmp_path / "state.db")
+    first = store.enqueue_event(
+        kind="task.requested",
+        payload={"task": "alpha", "capabilities": []},
+        priority=2,
+        dedup_key="same-key",
+        now=1.0,
+    )
+    assert store.enqueue_event(
+        kind="task.requested",
+        payload={"task": "alpha", "capabilities": []},
+        priority=2,
+        dedup_key="same-key",
+        now=2.0,
+    ) == first
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="dedup_key is already bound"):
+        store.enqueue_event(
+            kind="task.requested",
+            payload={"task": "beta", "capabilities": []},
+            priority=2,
+            dedup_key="same-key",
+            now=3.0,
+        )

@@ -105,3 +105,57 @@ def test_ambiguous_mutation_must_be_reconciled_before_retry(tmp_path: Path) -> N
 
     assert retried.output == {"written": 7}
     assert attempts == 2
+
+
+def test_tool_arguments_are_validated_against_json_schema_before_handler(tmp_path: Path) -> None:
+    store = Store(tmp_path / "state.db")
+    registry = ToolRegistry(store)
+    calls: list[dict[str, object]] = []
+    registry.register(
+        ToolSpec(
+            name="typed.write",
+            description="requires an integer and rejects extra fields",
+            input_schema={
+                "type": "object",
+                "properties": {"value": {"type": "integer"}},
+                "required": ["value"],
+                "additionalProperties": False,
+            },
+            capability="typed.write",
+            mutation=True,
+        ),
+        lambda args: calls.append(args) or {"ok": True},
+    )
+
+    import pytest
+    from prorun.tools import ToolError
+
+    with pytest.raises(ToolError, match="arguments do not match input_schema"):
+        registry.execute(
+            name="typed.write",
+            arguments={"value": "not-an-integer", "extra": True},
+            request_id="typed-1",
+            allowed_capabilities={"typed.write"},
+            now=1.0,
+        )
+
+    assert calls == []
+    assert registry.effect_state("typed-1") is None
+
+
+def test_tool_registration_rejects_unsupported_schema_keywords(tmp_path: Path) -> None:
+    store = Store(tmp_path / "state.db")
+    registry = ToolRegistry(store)
+
+    import pytest
+
+    with pytest.raises(ValueError, match="unsupported keyword"):
+        registry.register(
+            ToolSpec(
+                name="unsupported.schema",
+                description="must fail closed",
+                input_schema={"type": "object", "format": "opaque-custom-format"},
+                capability="schema.test",
+            ),
+            lambda args: {"ok": True},
+        )

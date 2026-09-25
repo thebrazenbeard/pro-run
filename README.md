@@ -9,17 +9,20 @@ The repository description calls this a continuous execution environment for LLM
 ## What V1 provides
 
 - SQLite/WAL durable state with a lease-based event queue.
-- Event deduplication and recovery after expired worker leases.
+- Event deduplication bound to exact kind/payload/priority, plus recovery after expired worker leases.
 - Interval schedules that emit idempotent events.
-- Durable runs and run transcripts across model turns.
+- Durable runs and idempotently keyed run transcripts across model turns.
+- Atomic run creation + initial-step scheduling, with source-event-to-run binding so redelivered wakeups reuse the same run.
+- Per-step durable model-decision fencing before any tool dispatch.
 - Salience/relevance-based memory selection under a bounded context budget.
 - A provider-neutral model interface plus a minimal OpenAI-compatible adapter.
-- Structured tool admission by explicit capability.
+- Structured tool admission by explicit capability and a fail-closed JSON-Schema-compatible validation subset.
 - Exactly one admitted tool call per model turn for deterministic effect ordering.
 - A durable mutation ledger keyed by request ID and canonical request digest.
 - Replay of already committed mutation results without re-executing the effect.
 - `BLOCKED_EFFECT` recovery when a mutation outcome becomes ambiguous.
 - Explicit reconciliation before retry of an ambiguous effect.
+- Atomic run-generation advance + successor-event scheduling, including effect-recovery resumes.
 - Append-only lifecycle journal entries for queue claims and recovery evidence.
 - A small daemon and CLI for submitting, scheduling, inspecting, and running work.
 

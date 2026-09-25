@@ -15,12 +15,12 @@ The architecture is intentionally self-contained. Portfolio repositories influen
 `prorun.store.Store` uses SQLite in WAL mode. It persists:
 
 - event queue entries and worker leases;
-- task runs and durable transcripts;
+- task runs, source-event bindings, idempotently keyed durable transcripts, and per-step model decisions;
 - memory records with salience;
 - interval schedules;
 - append-only journal entries.
 
-Queue work is claimed under `BEGIN IMMEDIATE`. An expired lease can be reclaimed by another worker. A lease is not ownership forever; it is a bounded execution claim.
+Queue work is claimed under `BEGIN IMMEDIATE`. An expired lease can be reclaimed by another worker. A lease is not ownership forever; it is a bounded execution claim. Event deduplication keys are durably bound to canonical kind + payload + priority; reusing a key for different intent fails closed.
 
 ### Scheduler
 
@@ -31,12 +31,12 @@ Queue work is claimed under `BEGIN IMMEDIATE`. An expired lease can be reclaimed
 `prorun.engine.Engine` implements the persistent ReAct-style loop:
 
 1. claim one durable event;
-2. turn `task.requested` into a durable run, or load an existing `run.step`;
+2. atomically create an idempotently source-bound durable run plus its initial `run.step`, or load an existing `run.step`;
 3. assemble bounded context from system prompt, current task, durable transcript, and relevant memory;
-4. ask the model for exactly one of: final text or one structured tool call;
-5. pass tool calls through capability admission and the effect ledger;
-6. persist the result;
-7. schedule the next run step or close the run.
+4. load the already-admitted model decision for this run generation, or ask the model for exactly one of: final text or one structured tool call and persist that decision before dispatch;
+5. pass tool calls through bounded JSON-Schema-compatible validation, capability admission, and the effect ledger;
+6. persist the result under a stable per-step transcript key;
+7. atomically advance the run generation and schedule its successor event, or close the run. Effect-recovery resumes use the same atomic advance + successor rule.
 
 A run has these operational states:
 
@@ -70,7 +70,7 @@ A `ToolSpec` declares:
 - required capability;
 - whether the operation is a mutation.
 
-Read-only calls execute directly after capability and argument admission. Mutations first write a durable request record containing canonical request identity. The ledger then records execution state and result identity.
+Tool arguments are validated against a fail-closed JSON-Schema-compatible subset before any handler or effect-ledger admission. V1 supports ordinary type, enum/const, object/property/required/additional-property, array/item/uniqueness, string length/pattern, numeric bound/multiple, and allOf/anyOf/oneOf/not constraints. Unsupported keywords are rejected when a tool is registered rather than silently treated as enforced. Read-only calls then execute directly after capability admission. Mutations first write a durable request record containing canonical request identity. The ledger then records execution state and result identity.
 
 The effect state machine is:
 
@@ -120,10 +120,15 @@ Pro-Run is designed around process death at arbitrary points:
 
 - death before queue claim: event remains pending;
 - death after claim but before completion: lease expires and event becomes reclaimable;
-- death after a read-only call: the model step can be retried;
+- death during initial submission: run creation and initial-step scheduling roll back together;
+- death after `task.requested` creates a run but before source-event ACK: redelivery reuses the same source-bound run;
+- death after model inference: the persisted run-step decision is reused instead of asking the model to mint a replacement tool request;
+- death after a read-only call: the same admitted model decision can be retried;
 - death after mutation admission but before committed result: effect remains unresolved and blocks blind replay;
-- death after a committed mutation: same request ID replays the stored result;
-- death between model turns: run transcript and next-step event are durable.
+- death after a committed mutation but before step advancement: the same persisted request ID replays the stored result;
+- failure while scheduling a normal or effect-recovery successor step: run-generation advancement rolls back in the same SQLite transaction;
+- retry after transcript persistence: stable per-step message keys reuse the same assistant/tool entry instead of duplicating history;
+- death between model turns: run transcript, model decisions, and next-step events are durable.
 
 V1 uses one SQLite database and therefore assumes a filesystem/storage setup where SQLite/WAL semantics are valid. Distributed multi-database consensus is outside scope.
 
@@ -145,7 +150,7 @@ Tool adapters are responsible for target-specific authorization, sandboxing, aut
 
 ## Determinism and canonical identity
 
-Mutation request identity uses canonical JSON (`sort_keys=True`, compact separators, UTF-8) and SHA-256. The semantic request bound to an idempotency key is `{tool, arguments}`. Scheduling dedupe binds schedule ID + due occurrence.
+Mutation request identity uses canonical JSON (`sort_keys=True`, compact separators, UTF-8) and SHA-256. The semantic request bound to a mutation idempotency key is `{tool, arguments}`. Queue dedup keys bind canonical event kind + payload + priority; a conflicting reuse is rejected. Scheduling dedupe derives those keys from schedule ID + due occurrence.
 
 V1 does not claim canonical JSON interoperability with every language/runtime. Cross-language protocols should define a dedicated canonicalization profile before treating digests as portable cryptographic identities.
 

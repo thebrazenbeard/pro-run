@@ -39,6 +39,25 @@ If the same `request_id` reappears:
 
 A request ID is therefore an effect identity, not a casual correlation ID.
 
+## Run-step decision binding
+
+Mutation idempotency is not sufficient if a retried run step can ask the model to generate a different request ID. Pro-Run therefore persists the exact model decision for `(run_id, step)` before any tool dispatch. A reclaimed/retried step reuses that decision verbatim.
+
+This closes the crash window:
+
+```text
+model emits mutation A / request_id=A1
+-> mutation A commits externally
+-> process dies before run generation advances
+-> old event is redelivered
+-> persisted decision A1 is reused
+-> committed result is replayed, not re-executed
+```
+
+The run generation and successor `run.step` event are also advanced in one SQLite transaction. A failure to schedule the successor cannot leave a run durably advanced with no event capable of continuing it. The same rule applies when a `BLOCKED_EFFECT` run resumes after reconciliation.
+
+Assistant decisions, tool results, and reconciled-effect results use stable transcript keys. If a crash occurs after a message is durable but before the step transition commits, replay verifies/reuses the same transcript entry instead of appending duplicate history.
+
 ## Ambiguous outcome
 
 A handler exception is conservatively treated as an unknown outcome because the handler may have dispatched an external effect before the local failure became visible.

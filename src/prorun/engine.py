@@ -32,6 +32,39 @@ class ModelAdapter(Protocol):
     ) -> ModelResponse: ...
 
 
+def _decision_from_response(response: ModelResponse) -> dict[str, Any]:
+    if response.tool_call is not None:
+        return {
+            "kind": "tool_call",
+            "request_id": response.tool_call.request_id,
+            "name": response.tool_call.name,
+            "arguments": response.tool_call.arguments,
+        }
+    assert response.final_text is not None
+    return {"kind": "final_text", "final_text": response.final_text}
+
+
+def _response_from_decision(decision: dict[str, Any]) -> ModelResponse:
+    kind = decision.get("kind")
+    if kind == "tool_call":
+        arguments = decision.get("arguments")
+        if not isinstance(arguments, dict):
+            raise RuntimeError("stored tool-call arguments must be an object")
+        return ModelResponse(
+            tool_call=ToolCall(
+                request_id=str(decision["request_id"]),
+                name=str(decision["name"]),
+                arguments=arguments,
+            )
+        )
+    if kind == "final_text":
+        final_text = decision.get("final_text")
+        if not isinstance(final_text, str):
+            raise RuntimeError("stored final_text decision must be text")
+        return ModelResponse(final_text=final_text)
+    raise RuntimeError("stored run step decision has unknown kind")
+
+
 class Engine:
     def __init__(
         self,
@@ -54,16 +87,21 @@ class Engine:
         self.lease_seconds = lease_seconds
         self.max_steps = max_steps
 
-    def submit_task(self, task: str, capabilities: set[str], *, now: float) -> str:
-        run_id = self.store.create_run(task=task, capabilities=capabilities, now=now)
-        self.store.enqueue_event(
-            kind="run.step",
-            payload={"run_id": run_id, "step": 0},
-            priority=0,
-            dedup_key=f"run-step:{run_id}:0",
+    def submit_task(
+        self,
+        task: str,
+        capabilities: set[str],
+        *,
+        now: float,
+        source_event_id: str | None = None,
+    ) -> str:
+        return self.store.create_run_with_initial_step(
+            task=task,
+            capabilities=capabilities,
             now=now,
+            source_event_id=source_event_id,
+            priority=0,
         )
-        return run_id
 
     def _messages_for_run(self, run: dict[str, Any]) -> list[dict[str, str]]:
         transcript = self.store.list_run_messages(run["id"])
@@ -92,15 +130,9 @@ class Engine:
             role="tool",
             content=f"reconciled {result.tool_name} => {json.dumps(result.output, sort_keys=True)}",
             now=now,
+            message_key=f"effect:{request_id}:reconciled-result",
         )
-        next_step = self.store.resume_run_after_effect(run_id=run_id, now=now)
-        self.store.enqueue_event(
-            kind="run.step",
-            payload={"run_id": run_id, "step": next_step},
-            priority=0,
-            dedup_key=f"run-step:{run_id}:{next_step}",
-            now=now,
-        )
+        self.store.resume_run_after_effect(run_id=run_id, now=now, priority=0)
 
     def run_once(self, *, now: float) -> str | None:
         event = self.store.claim_event(
@@ -126,7 +158,12 @@ class Engine:
                     retry_at=now + 60.0,
                 )
                 raise ValueError("task.requested capabilities must be a list of strings")
-            run_id = self.submit_task(task.strip(), set(capabilities), now=now)
+            run_id = self.submit_task(
+                task.strip(),
+                set(capabilities),
+                now=now,
+                source_event_id=event.id,
+            )
             self.store.ack_event(event.id, worker_id=self.worker_id, now=now)
             return run_id
         if event.kind != "run.step":
@@ -153,10 +190,22 @@ class Engine:
             return run_id
 
         try:
-            response = self.model.respond(
-                messages=self._messages_for_run(run),
-                tools=self.tools.specs(run["capabilities"]),
+            stored_decision = self.store.get_run_step_decision(
+                run_id=run_id, step=run["step_count"]
             )
+            if stored_decision is None:
+                response = self.model.respond(
+                    messages=self._messages_for_run(run),
+                    tools=self.tools.specs(run["capabilities"]),
+                )
+                self.store.record_run_step_decision(
+                    run_id=run_id,
+                    step=run["step_count"],
+                    decision=_decision_from_response(response),
+                    now=now,
+                )
+            else:
+                response = _response_from_decision(stored_decision)
             if response.tool_call is not None:
                 call = response.tool_call
                 self.store.record_run_message(
@@ -167,6 +216,7 @@ class Engine:
                         f"arguments={json.dumps(call.arguments, sort_keys=True)}"
                     ),
                     now=now,
+                    message_key=f"step:{run['step_count']}:assistant-decision",
                 )
                 try:
                     result = self.tools.execute(
@@ -206,14 +256,12 @@ class Engine:
                     role="tool",
                     content=f"{call.name} => {json.dumps(result.output, sort_keys=True)}",
                     now=now,
+                    message_key=f"step:{run['step_count']}:tool-result",
                 )
-                self.store.update_run(run_id, now=now, increment_step=True)
-                next_step = run["step_count"] + 1
-                self.store.enqueue_event(
-                    kind="run.step",
-                    payload={"run_id": run_id, "step": next_step},
+                self.store.advance_run_step(
+                    run_id=run_id,
+                    expected_step=run["step_count"],
                     priority=event.priority,
-                    dedup_key=f"run-step:{run_id}:{next_step}",
                     now=now,
                 )
             else:
@@ -223,6 +271,7 @@ class Engine:
                     role="assistant",
                     content=response.final_text,
                     now=now,
+                    message_key=f"step:{run['step_count']}:assistant-final",
                 )
                 self.store.update_run(
                     run_id,
