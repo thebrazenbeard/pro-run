@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro-run.local/schemas/run-receipt.schema.json",
+  "title": "Pro-Run Run Receipt V1",
+  "type": "object",
+  "required": ["run_id", "status", "step_count"],
+  "properties": {
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {
+      "enum": ["RUNNING", "BLOCKED_EFFECT", "COMPLETED", "FAILED"]
+    },
+    "step_count": {"type": "integer", "minimum": 0},
+    "final_text": {"type": ["string", "null"]},
+    "last_error": {"type": ["string", "null"]},
+    "blocked_request_id": {"type": ["string", "null"]}
+  },
+  "additionalProperties": false
+}
