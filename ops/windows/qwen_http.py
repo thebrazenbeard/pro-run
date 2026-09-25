@@ -7,6 +7,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import torch
 from transformers import AutoTokenizer, BitsAndBytesConfig, Qwen3_5ForCausalLM
 
+from tool_protocol import ToolProtocolError, parse_qwen_response, to_openai_message
+
 
 MODEL_PATH = os.environ["PRO_RUN_MODEL_PATH"]
 MODEL_ID = os.getenv("PRO_RUN_MODEL_ID", "qwen3.5-4b-local")
@@ -30,19 +32,27 @@ model = Qwen3_5ForCausalLM.from_pretrained(
 model.eval()
 
 
-def generate(messages: list[dict[str, str]]) -> str:
+def generate(
+    messages: list[dict[str, object]],
+    tools: list[dict[str, object]],
+) -> str:
+    template_kwargs: dict[str, object] = {}
+    if tools:
+        template_kwargs["tools"] = tools
     try:
         prompt = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
             enable_thinking=False,
+            **template_kwargs,
         )
     except TypeError:
         prompt = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
+            **template_kwargs,
         )
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     with torch.inference_mode():
@@ -79,7 +89,20 @@ class Handler(BaseHTTPRequestHandler):
             request = json.loads(
                 self.rfile.read(int(self.headers.get("Content-Length", "0")))
             )
-            content = generate(request["messages"])
+            messages = request.get("messages")
+            tools = request.get("tools") or []
+            if not isinstance(messages, list) or not all(
+                isinstance(item, dict) for item in messages
+            ):
+                raise ValueError("messages must be an array of objects")
+            if not isinstance(tools, list) or not all(
+                isinstance(item, dict) for item in tools
+            ):
+                raise ValueError("tools must be an array of objects")
+
+            raw = generate(messages, tools)
+            parsed = parse_qwen_response(raw, tools=tools, messages=messages)
+            message, finish_reason = to_openai_message(parsed)
             self.send_json(
                 200,
                 {
@@ -89,12 +112,14 @@ class Handler(BaseHTTPRequestHandler):
                     "choices": [
                         {
                             "index": 0,
-                            "message": {"role": "assistant", "content": content},
-                            "finish_reason": "stop",
+                            "message": message,
+                            "finish_reason": finish_reason,
                         }
                     ],
                 },
             )
+        except ToolProtocolError as exc:
+            self.send_json(422, {"error": f"ToolProtocolError: {exc}"})
         except Exception as exc:
             self.send_json(500, {"error": f"{type(exc).__name__}: {exc}"})
 
