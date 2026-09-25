@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro-run.local/schemas/trigger.schema.json",
+  "title": "Pro-Run Interval Trigger V1",
+  "type": "object",
+  "required": ["kind", "payload", "every_seconds", "first_at"],
+  "properties": {
+    "kind": {"type": "string", "minLength": 1},
+    "payload": {"type": "object"},
+    "every_seconds": {"type": "number", "exclusiveMinimum": 0},
+    "first_at": {"type": "number"}
+  },
+  "additionalProperties": false
+}

@@ -1,3 +1,188 @@
-# pro-run
+# Pro-Run
 
-Repository initialized for isolated V1 implementation work. The full implementation is developed on a review branch before any merge to `main`.
+**Durable continuous execution for tool-using language models.**
+
+Pro-Run turns a stateless model call into a recoverable execution process: events wake work, durable state survives process restarts, relevant memory is injected into context, model turns are constrained to structured tool calls or a final answer, and external mutations are fenced behind idempotency and reconciliation rules.
+
+The repository description calls this a continuous execution environment for LLM autonomy. In concrete terms, Pro-Run provides **process-level autonomy while a Pro-Run daemon is actually running**. It does not imply hidden activity when no process is running, model consciousness, unrestricted authority, or permission to perform effects a host has not granted.
+
+## What V1 provides
+
+- SQLite/WAL durable state with a lease-based event queue.
+- Event deduplication and recovery after expired worker leases.
+- Interval schedules that emit idempotent events.
+- Durable runs and run transcripts across model turns.
+- Salience/relevance-based memory selection under a bounded context budget.
+- A provider-neutral model interface plus a minimal OpenAI-compatible adapter.
+- Structured tool admission by explicit capability.
+- Exactly one admitted tool call per model turn for deterministic effect ordering.
+- A durable mutation ledger keyed by request ID and canonical request digest.
+- Replay of already committed mutation results without re-executing the effect.
+- `BLOCKED_EFFECT` recovery when a mutation outcome becomes ambiguous.
+- Explicit reconciliation before retry of an ambiguous effect.
+- Append-only lifecycle journal entries for queue claims and recovery evidence.
+- A small daemon and CLI for submitting, scheduling, inspecting, and running work.
+
+## Core invariant
+
+Reasoning is retryable. External effects are not assumed retryable.
+
+```text
+REQUEST != AUTHORITY != ATTEMPT != EFFECT != VERIFIED EFFECT
+```
+
+If a mutation handler loses its response after dispatch, Pro-Run records `ATTEMPTED_UNKNOWN`, stops that run, and refuses blind replay. A host must reconcile whether the effect occurred. If it did, the committed result is replayed; if it did not, Pro-Run retries the exact stored request rather than asking the model to invent a replacement call.
+
+## Architecture
+
+```text
+ external event / schedule
+          |
+          v
+  +------------------+
+  | durable event DB |
+  +------------------+
+          |
+       lease/claim
+          |
+          v
+  +------------------+       +----------------+
+  | execution engine |<----->| context/memory |
+  +------------------+       +----------------+
+          |
+       model turn
+          |
+     final | tool call
+           v
+  +------------------+
+  | capability gate  |
+  +------------------+
+          |
+          v
+  +------------------+      ambiguous       +------------------+
+  | tool/effect      |---------------------->| BLOCKED_EFFECT   |
+  | ledger           |                       | + reconciliation |
+  +------------------+                       +------------------+
+          |
+       receipt
+          v
+  +------------------+
+  | durable journal  |
+  +------------------+
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/EFFECT_AND_RECOVERY.md](docs/EFFECT_AND_RECOVERY.md).
+
+## Portfolio-derived design
+
+Before implementation, the full accessible `thebrazenbeard` portfolio was swept at repository level: **70 repositories** were inventoried and their current README surfaces inspected. High-value public donors were then inspected more deeply. Pro-Run is self-contained; donor repositories are architecture/provenance inputs, not runtime dependencies.
+
+The strongest donor mechanisms were:
+
+- `project-runner`: work units, leases, deterministic deduplication, durable dispatch, exact-subject currentness, bounded retry.
+- `wip`: crash recovery, checkpoints, recovery/effect lifecycle separation.
+- `ccb-core` and `intranel`: canonical envelopes, routing, dedupe, journal/reconciliation discipline.
+- `ingest`: deterministic intake, provenance, receipts, raw-vs-derived separation.
+- `temporal`: simple append-only time/event semantics.
+- `driftguard`: monotonic durable state, compare-and-swap thinking, evidence-bound recovery.
+- `WorkBridgeMCP`: capability narrowing, bounded execution, identity checks around effects.
+- `vera-mesh`: mutation-ledger idempotency and fail-closed replay safety.
+- `vera-mono`: unresolved-effect recovery barrier and explicit effect/readback distinctions.
+
+The complete public-safe audit is in [docs/PORTFOLIO_SWEEP_V1.md](docs/PORTFOLIO_SWEEP_V1.md). Private repositories were included in the internal sweep but are not named or reproduced in this public repository.
+
+## Quick start
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m pip install -e '.[dev]'
+pytest
+```
+
+Submit a durable task:
+
+```bash
+pro-run --state .pro-run/state.db submit \
+  "Summarize the queued work" \
+  --capability files.read
+```
+
+Run one cycle against an OpenAI-compatible chat-completions endpoint:
+
+```bash
+export PRO_RUN_BASE_URL="http://localhost:11434/v1"
+export PRO_RUN_MODEL="your-model"
+# export PRO_RUN_API_KEY="..."  # only when your endpoint requires one
+
+pro-run --state .pro-run/state.db run-once
+```
+
+Run continuously:
+
+```bash
+pro-run --state .pro-run/state.db daemon --poll-seconds 1
+```
+
+Schedule a recurring task:
+
+```bash
+pro-run --state .pro-run/state.db schedule \
+  "Review the durable queue" \
+  --every 300
+```
+
+The CLI intentionally does not expose arbitrary shell execution. Host applications register their own tools through `ToolRegistry`, with each tool bound to a named capability and an explicit `mutation` classification.
+
+## Library sketch
+
+```python
+from prorun.context import ContextAssembler
+from prorun.engine import Engine
+from prorun.store import Store
+from prorun.tools import ToolRegistry, ToolSpec
+
+store = Store("state.db")
+tools = ToolRegistry(store)
+
+tools.register(
+    ToolSpec(
+        name="inventory.read",
+        description="Read inventory state",
+        input_schema={"type": "object", "required": ["sku"]},
+        capability="inventory.read",
+        mutation=False,
+    ),
+    lambda args: {"sku": args["sku"], "quantity": 4},
+)
+
+# Supply any object implementing ModelAdapter, then create Engine(...).
+```
+
+Mutating handlers should return JSON-serializable dictionaries. If a mutation throws after ledger admission, Pro-Run treats its outcome as ambiguous rather than assuming nothing happened.
+
+## Repository map
+
+```text
+src/prorun/
+  cli.py                     CLI entrypoint
+  context.py                 bounded context + memory assembly
+  daemon.py                  scheduler/engine continuous loop
+  engine.py                  durable ReAct-style execution loop
+  scheduler.py               interval event triggers
+  store.py                   SQLite queue, runs, memory, journal
+  tools.py                   capability gate + effect/idempotency ledger
+  providers/
+    openai_compatible.py     provider adapter
+schemas/                     wire/data contracts
+tests/                       deterministic behavioral tests
+docs/                        architecture, effect model, donor audit
+```
+
+## Non-goals
+
+V1 is not a distributed consensus system, a universal authorization service, a sandbox for untrusted code, a secret manager, or proof that an external effect occurred merely because a tool handler returned success. It also does not make a model continuously active unless a host process is running the daemon.
+
+## License
+
+Source-visible proprietary. Noncommercial evaluation/research rights are described in [LICENSE](LICENSE). Commercial use requires a separate written license; see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).

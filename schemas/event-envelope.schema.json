@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro-run.local/schemas/event-envelope.schema.json",
+  "title": "Pro-Run Event Envelope V1",
+  "type": "object",
+  "required": ["kind", "payload"],
+  "properties": {
+    "kind": {"type": "string", "minLength": 1},
+    "payload": {"type": "object"},
+    "priority": {"type": "integer", "default": 0},
+    "dedup_key": {"type": ["string", "null"]},
+    "available_at": {"type": ["number", "null"]}
+  },
+  "additionalProperties": false
+}

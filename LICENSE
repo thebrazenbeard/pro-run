@@ -1,0 +1,40 @@
+SOURCE-AVAILABLE PROPRIETARY LICENSE
+Version 1.0 — 2026-09-23
+
+Copyright (c) 2026 Patrick Sims. All rights reserved.
+
+1. SCOPE
+This license governs the original code, documentation, data structures, prompts, specifications, and other copyrightable material in this repository that is owned by the copyright holder (“Licensed Material”). It does not replace or restrict a license that separately applies to third-party material.
+
+2. LIMITED NONCOMMERCIAL PERMISSION
+You may access, read, and make copies of the Licensed Material reasonably necessary for private evaluation, security review, interoperability assessment, education, research, or preparation of a proposed contribution to this repository, provided that you do not use the Licensed Material for a Commercial Purpose and do not remove copyright, attribution, or license notices.
+
+3. COMMERCIAL USE REQUIRES A SEPARATE LICENSE
+No commercial rights are granted. Without prior written permission from the copyright holder, you may not use the Licensed Material, in whole or in substantial part, to generate revenue or commercial advantage; sell, license, sublicense, rent, or monetize it; operate it as or within a paid or commercially supported product or service; provide it as a hosted or managed service; or incorporate it into a commercial product, service, platform, dataset, or offering.
+
+4. REDISTRIBUTION AND DERIVATIVE WORKS
+Except for rights that GitHub’s Terms of Service independently require for operation of GitHub features, this license does not grant permission to publish, redistribute, sublicense, or publicly provide copies or derivative works of the Licensed Material. Private modifications for the noncommercial purposes allowed in Section 2 are permitted. Distribution or public deployment of modified versions requires prior written permission unless another license expressly applies to the relevant material.
+
+5. MACHINE LEARNING AND DATASET USE
+You may not use the Licensed Material as training data, fine-tuning data, evaluation data intended to improve a commercial model or service, or as part of a commercially exploited code or content dataset without prior written permission.
+
+6. CONTRIBUTIONS
+Contributions are accepted only under the repository’s CONTRIBUTING.md and CLA.md terms. Submission of a contribution does not change the license of the repository except as expressly agreed by the copyright holder.
+
+7. THIRD-PARTY MATERIAL
+Third-party software, content, dependencies, generated artifacts, or incorporated material remain governed by their respective licenses and notices. If this license conflicts with a valid third-party license for particular material, that third-party license controls for that material only.
+
+8. NO PATENT OR TRADEMARK LICENSE
+No patent, trademark, trade-name, logo, or branding rights are granted except to the minimum extent expressly required by applicable law or a separate written agreement.
+
+9. TERMINATION
+Any rights granted by this license terminate automatically upon material breach. Termination does not alter rights that arise independently under an applicable third-party license.
+
+10. DISCLAIMER
+THE LICENSED MATERIAL IS PROVIDED “AS IS,” WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT HOLDER WILL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE LICENSED MATERIAL OR ITS USE.
+
+11. COMMERCIAL LICENSING
+Commercial permission is available only through a separate written license from the copyright holder. See COMMERCIAL_LICENSE.md.
+
+12. PRIOR VERSIONS
+This license is prospective. It does not revoke permissions that were validly granted for earlier versions, commits, releases, or separately licensed material before this license was applied.

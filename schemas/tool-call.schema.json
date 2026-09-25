@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro-run.local/schemas/tool-call.schema.json",
+  "title": "Pro-Run Structured Tool Call V1",
+  "type": "object",
+  "required": ["request_id", "name", "arguments"],
+  "properties": {
+    "request_id": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1},
+    "arguments": {"type": "object"}
+  },
+  "additionalProperties": false
+}
