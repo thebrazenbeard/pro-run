@@ -159,6 +159,8 @@ V1 does not claim canonical JSON interoperability with every language/runtime. C
 Pro-Run distinguishes:
 
 - provider/model failure: retryable through the queue with bounded exponential delay;
+- daemon cycle exception: reported to stderr and polling continues after the engine has durably classified/requeued the work; `KeyboardInterrupt`/`SystemExit` still terminate normally;
+- malformed `task.requested` envelope: terminally journaled as `EVENT_REJECTED` and acknowledged rather than retried forever;
 - deterministic tool admission failure: reported to the run; host should repair configuration/input rather than blindly expand authority;
 - ambiguous mutation: fail closed into `BLOCKED_EFFECT`;
 - max-step exhaustion: deterministic run failure;

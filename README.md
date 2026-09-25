@@ -25,6 +25,8 @@ The repository description calls this a continuous execution environment for LLM
 - Atomic run-generation advance + successor-event scheduling, including effect-recovery resumes.
 - Append-only lifecycle journal entries for queue claims and recovery evidence.
 - A small daemon and CLI for submitting, scheduling, inspecting, and running work.
+- Daemon polling survives ordinary cycle exceptions after durable retry/rejection handling; process-control exceptions still stop it.
+- Malformed task-request envelopes are terminally rejected and journaled instead of becoming poison retry loops.
 
 ## Core invariant
 

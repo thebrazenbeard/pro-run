@@ -43,3 +43,25 @@ def test_daemon_turns_due_schedule_into_completed_run(tmp_path: Path) -> None:
     assert second.emitted_events == 0
     assert second.run_id == run_id
     assert store.get_run(run_id)["status"] == "COMPLETED"
+
+
+def test_run_forever_survives_retryable_cycle_exception(monkeypatch) -> None:
+    daemon = Daemon(scheduler=object(), engine=object())  # type: ignore[arg-type]
+    calls = 0
+
+    def flaky_cycle(*, now: float):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("temporary provider outage")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(daemon, "cycle", flaky_cycle)
+    monkeypatch.setattr("prorun.daemon.time.sleep", lambda _seconds: None)
+
+    import pytest
+
+    with pytest.raises(KeyboardInterrupt):
+        daemon.run_forever(poll_seconds=0.01)
+
+    assert calls == 2

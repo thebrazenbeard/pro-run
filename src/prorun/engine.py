@@ -146,18 +146,25 @@ class Engine:
             task = event.payload.get("task")
             capabilities = event.payload.get("capabilities", [])
             if not isinstance(task, str) or not task.strip():
+                self.store.append_journal(
+                    event_type="EVENT_REJECTED",
+                    subject_id=event.id,
+                    payload={"reason": "task.requested task must be a non-empty string"},
+                    now=now,
+                )
                 self.store.ack_event(event.id, worker_id=self.worker_id, now=now)
                 return None
             if not isinstance(capabilities, list) or not all(
                 isinstance(item, str) for item in capabilities
             ):
-                self.store.fail_event(
-                    event.id,
-                    worker_id=self.worker_id,
+                self.store.append_journal(
+                    event_type="EVENT_REJECTED",
+                    subject_id=event.id,
+                    payload={"reason": "task.requested capabilities must be a list of strings"},
                     now=now,
-                    retry_at=now + 60.0,
                 )
-                raise ValueError("task.requested capabilities must be a list of strings")
+                self.store.ack_event(event.id, worker_id=self.worker_id, now=now)
+                return None
             run_id = self.submit_task(
                 task.strip(),
                 set(capabilities),

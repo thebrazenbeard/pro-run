@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import sys
 import time
 
 from .engine import Engine
@@ -27,5 +28,8 @@ class Daemon:
         if poll_seconds <= 0:
             raise ValueError("poll_seconds must be > 0")
         while True:
-            self.cycle(now=time.time())
+            try:
+                self.cycle(now=time.time())
+            except Exception as exc:
+                print(f"pro-run cycle failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             time.sleep(poll_seconds)

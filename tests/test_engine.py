@@ -545,3 +545,32 @@ def test_effect_recovery_resume_and_successor_event_are_atomic(tmp_path: Path) -
     assert run["blocked_request_id"] == "effect-x"
     assert run["step_count"] == 0
     assert store.pending_event_count() == 0
+
+
+def test_malformed_task_request_is_rejected_without_retry_loop(tmp_path: Path) -> None:
+    store = Store(tmp_path / "state.db")
+    tools = ToolRegistry(store)
+
+    class ShouldNotRunModel:
+        def respond(self, *, messages, tools):
+            raise AssertionError("malformed task request must not reach the model")
+
+    engine = Engine(
+        store=store,
+        model=ShouldNotRunModel(),
+        tools=tools,
+        context=ContextAssembler(store),
+        system_prompt="Run.",
+        worker_id="worker-1",
+    )
+    event_id = store.enqueue_event(
+        kind="task.requested",
+        payload={"task": "bad capabilities", "capabilities": "not-a-list"},
+        dedup_key="malformed-task-1",
+        now=1.0,
+    )
+
+    assert engine.run_once(now=2.0) is None
+    assert store.pending_event_count() == 0
+    journal = store.list_journal(subject_id=event_id)
+    assert any(entry["event_type"] == "EVENT_REJECTED" for entry in journal)
