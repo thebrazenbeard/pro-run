@@ -6,7 +6,8 @@ This document records the first persistent Pro-Run deployment qualified on the L
 
 ## Bound source and model
 
-- Pro-Run source: `thebrazenbeard/pro-run@0abf6045d8e195557cebe9a37b86f2a1eaa9bbbe`.
+- Pro-Run source at initial activation: `thebrazenbeard/pro-run@0abf6045d8e195557cebe9a37b86f2a1eaa9bbbe`.
+- Post-reboot installed/current source after PR #2 merged: `thebrazenbeard/pro-run@2ed253c1b78af1cc9bd163e346d20f2fd86348f5`.
 - Model source: `rodrigomt/Qwen3.5-4B-Uncensored-Aggressive@d61dd146c8fd44c9a49cdb7f59f34e17b61902d8`.
 - Model endpoint: loopback-only `http://127.0.0.1:18081/v1`.
 - Advertised model ID: `qwen3.5-4b-local`.
@@ -59,6 +60,9 @@ The following behaviors were observed on the bound host:
 7. While the GPU was intentionally occupied by another model evaluation, a submitted Pro-Run run remained durable through repeated connection failures.
 8. That same run was not resubmitted. After GPU release, the Qwen supervisor observed sufficient VRAM, started the endpoint, and the existing Pro-Run run completed automatically with `GPU_CONTENTION_RECOVERED`.
 9. The recovered event completed on its tenth attempt, demonstrating durable retry across a prolonged model-backend outage.
+10. Lappy subsequently rebooted at `2026-09-25T17:53:06.5-04:00`; both boot-triggered supervisors returned under `SYSTEM`, the local model endpoint recovered, and the installed source read back at current `main@2ed253c1b78af1cc9bd163e346d20f2fd86348f5`.
+11. A fresh task submitted only after that reboot completed as `POST_REBOOT_RUNTIME_OK` (`ccf0013c-10e9-41e6-a15a-64a5edfd93ae`) with status `COMPLETED`, step 1, and `last_error = NULL`.
+12. The host persists a machine-readable qualification record at `C:\\ProgramData\\ProRun\\runtime\\QUALIFICATION.json`; the record written after the post-reboot probe had SHA-256 `4A710EBF6AF3814C3EB11DD324BB86D219287E5E38EA62E588CBD1471C0F5F7F`.
 
 ## Failures found during qualification
 
