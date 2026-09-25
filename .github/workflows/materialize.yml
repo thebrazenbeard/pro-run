@@ -5,7 +5,6 @@ on:
     branches:
       - build/pro-run-v1-20260925
     paths:
-      - ".pro-run-build/**"
       - ".github/workflows/materialize.yml"
 
 permissions:
@@ -30,7 +29,7 @@ jobs:
           echo "d9b5435d3d787904d6dff2fa31327202f5cd3ecb0155ed0a47d6477e5193c853  /tmp/pro-run-bundle.tar.gz" | sha256sum -c -
           tar -xzf /tmp/pro-run-bundle.tar.gz
           rm -rf .pro-run-build
-          rm -f .github/workflows/materialize.yml
+          rm -f .github/workflows/test.yml
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
