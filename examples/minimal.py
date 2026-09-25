@@ -14,14 +14,17 @@ class EchoModel:
 
 with tempfile.TemporaryDirectory() as temp:
     store = Store(Path(temp) / "state.db")
-    engine = Engine(
-        store=store,
-        model=EchoModel(),
-        tools=ToolRegistry(store),
-        context=ContextAssembler(store),
-        system_prompt="Execute the task.",
-        worker_id="example",
-    )
-    run_id = engine.submit_task("Demonstrate durable execution", set(), now=1.0)
-    engine.run_once(now=2.0)
-    print(store.get_run(run_id))
+    try:
+        engine = Engine(
+            store=store,
+            model=EchoModel(),
+            tools=ToolRegistry(store),
+            context=ContextAssembler(store),
+            system_prompt="Execute the task.",
+            worker_id="example",
+        )
+        run_id = engine.submit_task("Demonstrate durable execution", set(), now=1.0)
+        engine.run_once(now=2.0)
+        print(store.get_run(run_id))
+    finally:
+        store.close()
